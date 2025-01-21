@@ -1,5 +1,6 @@
-# Prediction of molecular NMR chemical shifts via three-dimensional graph neural networks
+# Prediction of molecular NMR chemical shifts via three-dimensional graph neural networks and transformer-based models
+
 
 ## Introduction
 
-The goal of this project is to develop a three-dimensional graph neural network (3D-GNN) for predicting molecular NMR chemical shifts. The 3D-GNN will be trained on a dataset of 3D molecular structures and their corresponding NMR chemical shifts. The 3D-GNN will be able to predict the chemical shifts of unseen 3D structures. The 3D-GNN will be evaluated on the accuracy of its predictions and the computational efficiency of its training and inference.
+In this project, we aim to develop a three-dimensional graph neural network (3D-GNN) and a transformer-based model for predicting molecular NMR chemical shifts. The 3D-GNN is a deep learning model that can capture the spatial and temporal dependencies of the chemical shift data. The transformer-based model is a powerful model that can capture the contextual dependencies of the chemical shift data.

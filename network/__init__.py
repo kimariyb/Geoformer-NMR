@@ -1,0 +1,3 @@
+from network.decoder import GeoformerModel
+
+def create_model(config): ...
