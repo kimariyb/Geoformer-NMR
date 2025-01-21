@@ -55,7 +55,7 @@ class LNNP(LightningModule):
         with torch.set_grad_enabled(stage == "train"):
             pred = self(batch)
 
-        label, mask = batch['atom_y'], batch['mask']
+        label, mask = batch.atom_y, batch.mask
         loss = loss_fn(pred, label[mask])
         self.losses[stage].append(loss.detach())
 
