@@ -1,11 +1,11 @@
 import torch
 
-from pytorch_lightning import LightningModule
-from torch.nn.functional import l1_loss, mse_loss
+from torch.nn.functional import l1_loss
 from torch.optim import AdamW
-from torch.optim.lr_scheduler import CosineAnnealingLR, ReduceLROnPlateau
+from torch.optim.lr_scheduler import ReduceLROnPlateau
+from pytorch_lightning import LightningModule
 
-from network import create_model
+from network.decoder import create_model
 
 
 class LNNP(LightningModule):
@@ -55,15 +55,8 @@ class LNNP(LightningModule):
         with torch.set_grad_enabled(stage == "train"):
             pred = self(batch)
 
-        loss = 0
-
-        if "labels" in batch:
-            if batch["labels"].ndim == 1:
-                batch["labels"] = batch["labels"].unsqueeze(1)
-
-            loss = loss_fn(pred, batch["labels"])
-            self.losses[stage].append(loss.detach())
-
+        label, mask = batch['atom_y'], batch['mask']
+        loss = loss_fn(pred, label[mask])
         self.losses[stage].append(loss.detach())
 
         return loss

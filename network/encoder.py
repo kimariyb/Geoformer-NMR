@@ -7,7 +7,6 @@ from einops import rearrange, repeat
 from network.layers import CosineCutoff, ExpNormalSmearing, VecLayerNorm
                                                     
 
-
 class GeoformerMultiHeadAttention(nn.Module):
     r"""
     Multi-head attention layer for Geoformer.

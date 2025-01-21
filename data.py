@@ -1,9 +1,13 @@
+import os
+
 from torch.utils.data import Subset
 from torch_geometric.data import DataLoader
 from pytorch_lightning import LightningDataModule
 
 from loader.carbon import CarbonDataset
 from loader.hydrogen import HydrogenDataset
+
+from utils import make_splits
 
 
 class DataModule(LightningDataModule):
@@ -17,11 +21,19 @@ class DataModule(LightningDataModule):
 
     def prepare_dataset(self):
         if self.hparams["dataset"] == "carbon":
-            self.dataset = CarbonDataset(self.hparams)
+            self.dataset = CarbonDataset(self.hparams["dataset_root"],)
         elif self.hparams["dataset"] == "hydrogen":
-            self.dataset = HydrogenDataset(self.hparams)
+            self.dataset = HydrogenDataset(self.hparams["dataset_root"],)
             
-        self.idx_train, self.idx_val, self.idx_test = None, None, None
+        self.idx_train, self.idx_val, self.idx_test = make_splits(
+            dataset_len=len(self.dataset), 
+            train_size=self.hparams["train_size"],
+            val_size=self.hparams["val_size"],
+            test_size=self.hparams["test_size"],
+            seed=self.hparams["seed"],
+            filename=os.path.join(self.hparams["log_dir"], "splits.npz"),
+            splits=self.hparams["splits"],
+        )
 
         print(
             f"train {len(self.idx_train)}, val {len(self.idx_val)}, test {len(self.idx_test)}"
@@ -62,6 +74,7 @@ class DataModule(LightningDataModule):
 
         if store_dataloader:
             self._saved_dataloaders[stage] = dl
+            
         return dl
 
 
