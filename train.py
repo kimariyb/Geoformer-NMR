@@ -79,6 +79,7 @@ def get_args():
         "--dataset",
         default="carbon",
         type=str,
+        choices=["carbon", "hydrogen"],
         help="Name of the torch_geometric dataset. Default is carbon",
     )
     parser.add_argument(

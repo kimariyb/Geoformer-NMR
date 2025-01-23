@@ -54,7 +54,7 @@ class HydrogenDataset(InMemoryDataset):
                     atom.SetProp('shift', str(hydrogen_shifts[i]))
                     atom.SetBoolProp('mask', True)
                 else: 
-                    atom.SetProp('shift', str(0))
+                    atom.SetProp('shift', str([0]))
                     atom.SetBoolProp('mask', False)
             
             graph = mol_to_graph(mol, canonical_atom_order=False, explicit_hydrogens=False)
