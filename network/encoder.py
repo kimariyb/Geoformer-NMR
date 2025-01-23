@@ -89,6 +89,29 @@ class GeoformerMultiHeadAttention(nn.Module):
         key_padding_mask: Optional[torch.Tensor] = None,  # (B, N)
         **kwargs,
     ):
+        r"""
+        Forward pass of the multi-head attention layer.
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            Input tensor of shape (B, N, F).
+        vec : torch.Tensor, optional
+            Vector tensor of shape (B, N, N, 3).
+        dist : torch.Tensor, optional
+            Distance tensor of shape (B, N, N).
+        edge_attr : torch.Tensor, optional
+            Edge attribute tensor of shape (B, N, N, F).
+        key_padding_mask : torch.Tensor, optional
+            Key padding mask of shape (B, N).
+
+        Returns
+        -------
+        attn : torch.Tensor
+            Attention output tensor of shape (B, N, F).
+        ipe : torch.Tensor
+            IPE output tensor of shape (B, N, N, F).
+        """
         q = rearrange(
             self.q_proj(x), "b n (h d) -> (b h) n d", h=self.num_heads
         )  # (BH, N, D)
@@ -206,9 +229,7 @@ class GeoformerAttnBlock(nn.Module):
         vec: torch.Tensor,  # (B, N, N, 3)
         dist: torch.Tensor,  # (B, N, N)
         edge_attr: torch.Tensor,  # (B, N, N, ?)
-        key_padding_mask: Optional[
-            torch.Tensor
-        ],  # [padding, cutoff] (B, N, N)
+        key_padding_mask: Optional[torch.Tensor],  # [padding, cutoff] (B, N, N)
         **kwargs,
     ):
         # attention

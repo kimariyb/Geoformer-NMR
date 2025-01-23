@@ -1,13 +1,53 @@
 import os
+import torch
+from typing import List, Dict, Any
 
-from torch.utils.data import Subset
-from torch_geometric.data import DataLoader
+from torch.utils.data import Subset, DataLoader
 from pytorch_lightning import LightningDataModule
 
 from loader.carbon import CarbonDataset
 from loader.hydrogen import HydrogenDataset
-
 from utils import make_splits
+
+
+class GeoformerDataCollator:
+    def __init__(self, max_nodes=None) -> None:
+        self.max_nodes = max_nodes
+
+    @staticmethod
+    def _pad_feats(feats: torch.Tensor, max_node: int) -> torch.Tensor:
+        N, *_ = feats.shape
+        if N <= max_node:
+            feats_padded = torch.zeros([max_node, *_], dtype=feats.dtype)
+            feats_padded[:N] = feats
+        else:
+            print(
+                f"Warning: max_node {max_node} is too small to hold all nodes {N} in a batch"
+            )
+            print("Play truncation...")
+
+        return feats_padded
+
+    def __call__(self, features: List[dict]) -> Dict[str, Any]:
+        batch = dict()
+
+        max_node = (
+            max(feat["z"].shape[0] for feat in features)
+            if self.max_nodes is None
+            else self.max_nodes
+        )
+
+        batch["z"] = torch.stack(
+            [self._pad_feats(feat["z"], max_node) for feat in features]
+        )
+        batch["pos"] = torch.stack(
+            [self._pad_feats(feat["pos"], max_node) for feat in features]
+        )
+
+        batch["label"] = torch.cat([self._pad_feats(feat["y"], max_node) for feat in features])
+        batch["mask"] = torch.cat([self._pad_feats(feat["mask"], max_node) for feat in features])
+
+        return batch
 
 
 class DataModule(LightningDataModule):
@@ -62,19 +102,24 @@ class DataModule(LightningDataModule):
         elif stage in ["val", "test"]:
             batch_size = self.hparams["inference_batch_size"]
             shuffle = False
-
+            
+        collator = GeoformerDataCollator(max_nodes=self.hparams["max_nodes"])
+            
         dl = DataLoader(
             dataset=dataset,
             batch_size=batch_size,
             shuffle=shuffle,
             num_workers=self.hparams["num_workers"],
-            pin_memory=True,
+            pin_memory=False,
             drop_last=False,
+            collate_fn=collator,
         )
 
         if store_dataloader:
             self._saved_dataloaders[stage] = dl
             
         return dl
+
+
 
 

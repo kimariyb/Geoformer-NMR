@@ -1,17 +1,23 @@
-import argparse
 import os
 import re
+import gc
+import argparse
+
 import torch
 import pytorch_lightning as pl
 
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint, ModelSummary
 from pytorch_lightning.loggers import CSVLogger, TensorBoardLogger
-from pytorch_lightning.strategies import DDPStrategy
+from pytorch_lightning.strategies import SingleDeviceStrategy
 
 from data import DataModule
 from module import LNNP
 from utils import LoadFromFile, number, save_argparse
 
+
+# clean cache before training
+gc.collect()
+torch.cuda.empty_cache()
 
 def get_args():
     parser = argparse.ArgumentParser(description="Training")
@@ -71,12 +77,12 @@ def get_args():
     # dataset specific
     parser.add_argument(
         "--dataset",
-        default=None,
+        default="carbon",
         type=str,
-        help="Name of the torch_geometric dataset",
+        help="Name of the torch_geometric dataset. Default is carbon",
     )
     parser.add_argument(
-        "--dataset-root", default=None, type=str, help="Data storage directory"
+        "--dataset-root", default='./data', type=str, help="Data storage directory"
     )
     parser.add_argument(
         "--max-nodes",
@@ -93,7 +99,7 @@ def get_args():
         help="Reload dataloaders every n epoch",
     )
     parser.add_argument(
-        "--batch-size", default=32, type=int, help="batch size"
+        "--batch-size", default=4, type=int, help="batch size"
     )
     parser.add_argument(
         "--inference-batch-size",
@@ -107,21 +113,15 @@ def get_args():
         help="Npz with splits idx_train, idx_val, idx_test",
     )
     parser.add_argument(
-        "--split-mode",
-        type=str,
-        default="random",
-        help="How to split the dataset. Either random or scaffold",
-    )
-    parser.add_argument(
         "--train-size",
         type=number,
-        default=None,
+        default=0.8,
         help="Percentage/number of samples in training set (None to use all remaining samples)",
     )
     parser.add_argument(
         "--val-size",
         type=number,
-        default=0.05,
+        default=0.1,
         help="Percentage/number of samples in validation set (None to use all remaining samples)",
     )
     parser.add_argument(
@@ -145,18 +145,18 @@ def get_args():
         help="Maximum atomic number that fits in the embedding matrix",
     )
     parser.add_argument(
-        "--embedding-dim", type=int, default=512, help="Embedding dimension"
+        "--embedding-dim", type=int, default=128, help="Embedding dimension"
     )
     parser.add_argument(
         "--ffn-embedding-dim",
         type=int,
-        default=2048,
+        default=256,
         help="Embedding dimension for feedforward network",
     )
     parser.add_argument(
         "--num-layers",
         type=int,
-        default=9,
+        default=6,
         help="Number of interaction layers in the model",
     )
     parser.add_argument(
@@ -168,7 +168,7 @@ def get_args():
     parser.add_argument(
         "--num-rbf",
         type=int,
-        default=64,
+        default=32,
         help="Number of radial basis functions in model",
     )
     parser.add_argument(
@@ -201,12 +201,6 @@ def get_args():
 
     # other specific
     parser.add_argument(
-        "--ndevices",
-        type=int,
-        default=-1,
-        help="Number of GPUs, -1 use all available. Use CUDA_VISIBLE_DEVICES=1, to decide gpus",
-    )
-    parser.add_argument(
         "--num-nodes", type=int, default=1, help="Number of nodes"
     )
     parser.add_argument(
@@ -217,7 +211,7 @@ def get_args():
         help="Floating point precision",
     )
     parser.add_argument(
-        "--log-dir", type=str, default=None, help="Log directory"
+        "--log-dir", type=str, default="./logs", help="Log directory"
     )
     parser.add_argument(
         "--task",
@@ -227,7 +221,7 @@ def get_args():
         help="Train or inference",
     )
     parser.add_argument(
-        "--seed", type=int, default=1, help="random seed (default: 1)"
+        "--seed", type=int, default=42, help="random seed (default: 42)"
     )
     parser.add_argument(
         "--redirect",
@@ -261,20 +255,13 @@ def get_args():
 
 
 def auto_exp(args):
-    default = ",".join(str(i) for i in range(torch.cuda.device_count()))
-    cuda_visible_devices = os.getenv(
-        "CUDA_VISIBLE_DEVICES", default=default
-    ).split(",")
-
     dir_name = (
-        f"ngpus_{len(cuda_visible_devices)}_bs_{args.batch_size}"
+        f"bs_{args.batch_size}"
         + f"_L{args.num_layers}_D{args.embedding_dim}_F{args.ffn_embedding_dim}"
         + f"_H{args.num_heads}_rbf_{args.num_rbf}"
-        + f"_norm_{args.norm_type}_decoder_{args.decoder_type}"
+        + f"_norm_{args.norm_type}"
         + f"_lr_{args.lr}"
         + f"_cutoff_{args.cutoff}"
-        + f"_split_{args.split_mode}"
-        + f"_loss_{args.loss_type}"
         + f"_seed_{args.seed}"
     )
 
@@ -309,13 +296,13 @@ def main():
     args = get_args()
 
     pl.seed_everything(args.seed, workers=True)
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     # initialize data module
     args = auto_exp(args)
 
     data = DataModule(args)
     data.prepare_dataset()
-    args.mean, args.std = data.mean, data.std
 
     model = LNNP(args)
 
@@ -341,11 +328,10 @@ def main():
             default_hp_metric=False,
         )
 
-        strategy = DDPStrategy(find_unused_parameters=False)
+        strategy = SingleDeviceStrategy(device=device)
 
         trainer = pl.Trainer(
             max_epochs=args.num_epochs,
-            devices=args.ndevices,
             num_nodes=args.num_nodes,
             accelerator=args.accelerator,
             deterministic=True,

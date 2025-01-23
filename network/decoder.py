@@ -16,38 +16,34 @@ class GeoformerDecoder(nn.Module):
 
         self.embedding_dim = embedding_dim
         self.act = nn.LeakyReLU(negative_slope=0.1)
-        self.node = nn.Embedding(embedding_dim=self.embedding_dim)
-        self.edge = nn.Embedding(embedding_dim=self.embedding_dim)
+        
         self.readout = nn.Sequential(
-            nn.Linear(self.embedding_dim, self.embedding_dim), self.act, nn.Dropout(0.1),
-            nn.Linear(self.embedding_dim, self.embedding_dim), self.act, nn.Dropout(0.1),
-            nn.Linear(self.embedding_dim, self.embedding_dim), self.act, nn.Dropout(0.1),
-            nn.Linear(self.embedding_dim, 1),
+            nn.Linear(self.embedding_dim, self.embedding_dim // 2), self.act, nn.Dropout(0.1),
+            nn.Linear(self.embedding_dim // 2, self.embedding_dim // 4), self.act, nn.Dropout(0.1),
+            nn.Linear(self.embedding_dim // 4, 1),
         )
 
         self.reset_parameters()
 
     def reset_parameters(self):
-        nn.init.kaiming_uniform_(self.node.weight, a=1)
-        nn.init.kaiming_uniform_(self.edge.weight, a=1)
         nn.init.kaiming_uniform_(self.readout[0].weight, a=1)
         nn.init.kaiming_uniform_(self.readout[3].weight, a=1)
         nn.init.kaiming_uniform_(self.readout[6].weight, a=1)
-        nn.init.kaiming_uniform_(self.readout[9].weight, a=1)
+        self.readout[0].bias.data.fill_(0)
+        self.readout[3].bias.data.fill_(0)
+        self.readout[6].bias.data.fill_(0)
 
     def forward(
         self,
-        x: torch.Tensor,  # (B, N, F)
-        edge_attr: torch.Tensor,  # (B, N, N, F)
+        x: torch.Tensor, 
+        edge_attr: torch.Tensor,  
         **kwargs
     ):
-        # (B, N, F)
-        node_embedding = self.node(x)
-        # (B, N, F)
-        edge_embedding = self.edge(edge_attr)
-        # (B, N, F)
-        augmented_node_embedding = node_embedding + edge_embedding
-        # (B, N, 1)
+        edge_embedding = torch.mean(edge_attr, dim=2)
+        
+        # join node and edge embedding
+        augmented_node_embedding = x + edge_embedding
+        
         logits = self.readout(augmented_node_embedding)
 
         return logits
@@ -55,7 +51,7 @@ class GeoformerDecoder(nn.Module):
 
 class GeoformerPretrainedModel(PreTrainedModel):
     def __init__(self, config: PretrainedConfig):
-        super(GeoformerPretrainedModel, self).__init__()
+        super(GeoformerPretrainedModel, self).__init__(config)
 
         self.geo_encoder = GeoformerEncoder(
             pad_token_id=config.pad_token_id,
@@ -73,9 +69,7 @@ class GeoformerPretrainedModel(PreTrainedModel):
             norm_type=config.norm_type,
         )
         
-        self.geo_decoder = GeoformerDecoder(
-            embedding_dim=config.embedding_dim,
-        )
+        self.geo_decoder = GeoformerDecoder()
 
         self.post_init()
         
@@ -85,13 +79,16 @@ class GeoformerPretrainedModel(PreTrainedModel):
 
     def forward(
         self,
-        z: torch.Tensor,  # (B, N, F)
-        pos: torch.Tensor,  # (B, N, 3)
-        mask: torch.Tensor,  # (B, N)
+        z: torch.Tensor,  
+        pos: torch.Tensor, 
+        mask: torch.Tensor, 
     ):
         x, edge_attr = self.geo_encoder(z=z, pos=pos)
-        logits = self.geo_decoder(x=x, edge_attr=edge_attr) # (B, N, 1)
+        logits = self.geo_decoder(x=x, edge_attr=edge_attr) 
         
+        # (B, N, 1) -> (B * N, 1)
+        logits = logits.view(-1, 1)[:, 0]
+            
         return logits[mask]
     
     
