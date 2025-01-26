@@ -11,7 +11,7 @@ class GeoformerDecoder(nn.Module):
     r"""
     Geoformer decoder module.
     """
-    def __init__(self, embedding_dim=128) -> None:
+    def __init__(self, embedding_dim: int) -> None:
         super(GeoformerDecoder, self).__init__()
 
         self.embedding_dim = embedding_dim
@@ -20,7 +20,8 @@ class GeoformerDecoder(nn.Module):
         self.readout = nn.Sequential(
             nn.Linear(self.embedding_dim, self.embedding_dim // 2), self.act, nn.Dropout(0.1),
             nn.Linear(self.embedding_dim // 2, self.embedding_dim // 4), self.act, nn.Dropout(0.1),
-            nn.Linear(self.embedding_dim // 4, 1),
+            nn.Linear(self.embedding_dim // 4, self.embedding_dim // 8), self.act, nn.Dropout(0.1),
+            nn.Linear(self.embedding_dim // 8, 1),
         )
 
         self.reset_parameters()
@@ -29,9 +30,11 @@ class GeoformerDecoder(nn.Module):
         nn.init.kaiming_uniform_(self.readout[0].weight, a=1)
         nn.init.kaiming_uniform_(self.readout[3].weight, a=1)
         nn.init.kaiming_uniform_(self.readout[6].weight, a=1)
+        nn.init.kaiming_uniform_(self.readout[9].weight, a=1)
         self.readout[0].bias.data.fill_(0)
         self.readout[3].bias.data.fill_(0)
         self.readout[6].bias.data.fill_(0)
+        self.readout[9].bias.data.fill_(0)
 
     def forward(
         self,
@@ -69,7 +72,7 @@ class GeoformerPretrainedModel(PreTrainedModel):
             norm_type=config.norm_type,
         )
         
-        self.geo_decoder = GeoformerDecoder()
+        self.geo_decoder = GeoformerDecoder(embedding_dim=config.embedding_dim)
 
         self.post_init()
         

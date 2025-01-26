@@ -7,7 +7,7 @@ from tqdm import tqdm
 from rdkit import Chem, RDLogger
 from torch_geometric.data import InMemoryDataset, Data
 
-from loader.process import extract_carbon_shift, is_valid_molecule, mol_to_graph
+from loader.process import extract_carbon_shift, is_valid_molecule, mol_to_graph, mol_to_coords
 
 
 # Disable rdkit warnings
@@ -45,7 +45,12 @@ class CarbonDataset(InMemoryDataset):
             # check if the molecule is valid
             if not is_valid_molecule(mol):
                 continue
-            
+
+            # generate 3D coordinates
+            pos = mol_to_coords(mol)
+            if pos is None:
+                continue
+
             # extract carbon shifts
             carbon_shifts = extract_carbon_shift(mol)
             
@@ -56,8 +61,9 @@ class CarbonDataset(InMemoryDataset):
                 else: 
                     atom.SetProp('shift', str(0))
                     atom.SetBoolProp('mask', False)
-            
-            graph = mol_to_graph(mol, canonical_atom_order=False, explicit_hydrogens=False)
+
+            # convert to graph
+            graph = mol_to_graph(mol)
 
             # create data object
             data = Data()
@@ -65,16 +71,18 @@ class CarbonDataset(InMemoryDataset):
             data.edge_index = torch.from_numpy(graph["edge_index"]).to(torch.long)
             data.edge_attr = torch.from_numpy(graph["edge_feat"]).to(torch.long)
             data.x = torch.from_numpy(graph["node_feat"]).to(torch.long)
-            
-            data.z = torch.tensor(graph["z"]).to(torch.long)
-            data.pos = torch.tensor(graph["position"]).to(torch.float)
-            
+
             # add carbon shifts
             shift = np.array([ast.literal_eval(atom.GetProp('shift')) for atom in mol.GetAtoms()])
             mask = np.array([atom.GetBoolProp('mask') for atom in mol.GetAtoms()])
             data.mask = torch.from_numpy(mask).to(torch.bool)
             data.y = torch.from_numpy(shift).to(torch.float)
-            
+
+            # generate conformers
+            z = [atom.GetAtomicNum() for atom in mol.GetAtoms()]
+            data.z = torch.from_numpy(np.array(z)).to(torch.long)
+            data.pos = torch.from_numpy(np.array(pos)).to(torch.float)
+
             data_list.append(data)
         
         if self.pre_filter is not None:

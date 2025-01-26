@@ -28,7 +28,7 @@ class LoadFromFile(argparse.Action):
 
 def train_val_test_split(dset_len, train_size, val_size, test_size, seed):
     assert (train_size is None) + (val_size is None) + (
-        test_size is None
+            test_size is None
     ) <= 1, (
         "Only one of train_size, val_size, test_size is allowed to be None."
     )
@@ -65,7 +65,7 @@ def train_val_test_split(dset_len, train_size, val_size, test_size, seed):
 
     total = train_size + val_size + test_size
     assert (
-        dset_len >= total
+            dset_len >= total
     ), f"The dataset ({dset_len}) is smaller than the combined split sizes ({total})."
 
     if total < dset_len:
@@ -75,8 +75,8 @@ def train_val_test_split(dset_len, train_size, val_size, test_size, seed):
     idxs = np.random.default_rng(seed).permutation(idxs)
 
     idx_train = idxs[:train_size]
-    idx_val = idxs[train_size : train_size + val_size]
-    idx_test = idxs[train_size + val_size : total]
+    idx_val = idxs[train_size: train_size + val_size]
+    idx_test = idxs[train_size + val_size: total]
 
     return np.array(idx_train), np.array(idx_val), np.array(idx_test)
 
@@ -96,19 +96,19 @@ def number(text):
 
     if num_int == num_float:
         return num_int
-    
+
     return num_float
 
 
 def make_splits(
-    dataset_len: int,
-    train_size: float = 0.8,
-    val_size: float = 0.1,
-    test_size: float = 0.1,
-    seed: int = 42,
-    filename: str = None,
-    splits=None,
-):  
+        dataset_len: int,
+        train_size: float = 0.8,
+        val_size: float = 0.1,
+        test_size: float = 0.1,
+        seed: int = 42,
+        filename: str = None,
+        splits=None,
+):
     r"""
     Creates train, validation and test splits for a dataset.
 
@@ -158,9 +158,9 @@ def make_splits(
 
 
 def save_argparse(
-    args: argparse.Namespace, 
-    filename: str, 
-    exclude: list = None
+        args: argparse.Namespace,
+        filename: str,
+        exclude: list = None
 ):
     r"""
     Saves the argparse namespace to a file.
@@ -184,8 +184,8 @@ def save_argparse(
         yaml.dump(args, open(filename, "w"))
     else:
         raise ValueError("Configuration file should end with yaml or yml")
-    
-    
+
+
 def export_file(suppl: list, output_path: str):
     r"""
     Exports a list of RDKit molecules to a file.
@@ -198,44 +198,44 @@ def export_file(suppl: list, output_path: str):
         The path to the output file.
     """
     writer = Chem.SDWriter(output_path)
-    
+
     for mol in suppl:
         props = mol.GetPropsAsDict()
-        writer.SetProps(list(props.keys()))  
-        
+        writer.SetProps(list(props.keys()))
+
         writer.write(mol)
-        
+
     writer.close()
-   
+
 
 def create_hydrogen_dataset(data_path: str):
-    suppl = Chem.SDMolSupplier(data_path, removeHs=False, sanitize=True)
+    suppl = select_atoms(data_path)
 
     dataset = []
-        
+
     for mol in tqdm(suppl, desc="Validating dataset", total=len(suppl)):
         # Check if the molecule is valid
         if mol is None:
             print(f"Invalid molecule found in {data_path}")
             continue
-        
+
         # get the properties of the molecule
         prop_names = mol.GetPropNames(includePrivate=False, includeComputed=False)
         has_spectrum = False
-        
+
         for prop in prop_names:
             pattern = r"^Spectrum 1H \d+$"
             if bool(re.match(pattern, prop)):
                 has_spectrum = True
                 break
-        
+
         if has_spectrum:
             dataset.append(mol)
-        
+
     print(f"Valid molecules found: {len(dataset)}")
-    
+
     export_file(dataset, output_path='hydrogen_dataset.sdf')
-        
+
 
 def create_carbon_dataset(data_path: str):
     r"""
@@ -246,16 +246,16 @@ def create_carbon_dataset(data_path: str):
     data_path : str
         The path to the sdf file containing the carbon spectra.
     """
-    suppl = Chem.SDMolSupplier(data_path, removeHs=False, sanitize=True)
+    suppl = select_atoms(data_path)
 
     dataset = []
-        
+
     for mol in tqdm(suppl, desc="Validating dataset", total=len(suppl)):
         # Check if the molecule is valid
         if mol is None:
             print(f"Invalid molecule found in {data_path}")
             continue
-        
+
         # get the properties of the molecule
         prop_names = mol.GetPropNames(includePrivate=False, includeComputed=False)
         # check if the molecule has a carbon spectrum
@@ -266,9 +266,9 @@ def create_carbon_dataset(data_path: str):
                 break
             else:
                 continue
-        
+
     print(f"Valid molecules found: {len(dataset)}")
-        
+
     # export the dataset to a sdf file
     export_file(dataset, output_path='carbon_dataset.sdf')
 
@@ -285,13 +285,13 @@ def create_fluorine_dataset(data_path: str):
     suppl = Chem.SDMolSupplier(data_path, removeHs=False, sanitize=True)
 
     dataset = []
-        
+
     for mol in tqdm(suppl, desc="Validating dataset", total=len(suppl)):
         # Check if the molecule is valid
         if mol is None:
             print(f"Invalid molecule found in {data_path}")
             continue
-        
+
         # get the properties of the molecule
         prop_names = mol.GetPropNames(includePrivate=False, includeComputed=False)
         # check if the molecule has a carbon spectrum
@@ -302,11 +302,51 @@ def create_fluorine_dataset(data_path: str):
                 break
             else:
                 continue
-        
+
     print(f"Valid molecules found: {len(dataset)}")
-        
+
     # export the dataset to a sdf file
     export_file(dataset, output_path='fluorin_dataset.sdf')
+
+
+def select_atoms(data_path: str):
+    r"""
+    Selects target element atoms from a given sdf file.
+    Only H, B, C, O, N, F, Si, P, S, Cl, Br, I
+
+    Parameters
+    ----------
+    data_path : str
+        The path to the sdf file containing the spectra.
+
+    Returns
+    -------
+    list of Chem.rdchem.Mol
+        The list of selected atoms.
+    """
+    # Define the set of target elements
+    target_elements = {"H", "B", "C", "O", "N", "F", "Si", "P", "S", "Cl", "Br", "I"}
+
+    suppl = Chem.SDMolSupplier(data_path, removeHs=False, sanitize=True)
+
+    # Initialize the list to store valid molecules
+    valid_molecules = []
+
+    # Iterate over the molecules in the SDF file
+    for mol in tqdm(suppl, desc="Processing molecules", total=len(suppl)):
+        # Check if the molecule is valid
+        if mol is None:
+            print(f"Invalid molecule found in {data_path}")
+            continue
+
+        # Get the set of elements in the molecule
+        elements_in_mol = {atom.GetSymbol() for atom in mol.GetAtoms()}
+
+        # Check if the molecule contains only the target elements
+        if elements_in_mol.issubset(target_elements):
+            valid_molecules.append(mol)
+
+    return valid_molecules
 
 
 def create_dataset(data_path: str, element: str = 'carbon'):
@@ -330,6 +370,7 @@ def create_dataset(data_path: str, element: str = 'carbon'):
     else:
         raise ValueError("Invalid element specified. Options: 'carbon', 'hydrogen', 'fluorine'")
 
+
 if __name__ == "__main__":
-    data_path = './data/nmrshiftdb2withsignals_3d.sd'
+    data_path = './data/nmrshiftdb2withsignals.sd'
     create_dataset(data_path=data_path, element='hydrogen')

@@ -45,7 +45,7 @@ def get_args():
         default=0,
         help="How many steps to warm-up over. Defaults to 0 for no warm-up",
     )
-    parser.add_argument("--lr", default=1e-4, type=float, help="learning rate")
+    parser.add_argument("--lr", default=2e-4, type=float, help="learning rate")
     parser.add_argument(
         "--lr-patience",
         type=int,
@@ -65,7 +65,7 @@ def get_args():
         help="Minimum learning rate before early stop",
     )
     parser.add_argument(
-        "--weight-decay", type=float, default=0.0, help="Weight decay strength"
+        "--weight-decay", type=float, default=1e-5, help="Weight decay strength"
     )
     parser.add_argument(
         "--early-stopping-patience",
@@ -96,11 +96,11 @@ def get_args():
     parser.add_argument(
         "--reload",
         type=int,
-        default=0,
+        default=1,
         help="Reload dataloaders every n epoch",
     )
     parser.add_argument(
-        "--batch-size", default=4, type=int, help="batch size"
+        "--batch-size", default=32, type=int, help="batch size"
     )
     parser.add_argument(
         "--inference-batch-size",
@@ -134,7 +134,7 @@ def get_args():
     parser.add_argument(
         "--num-workers",
         type=int,
-        default=4,
+        default=6,
         help="Number of workers for data prefetch",
     )
 
@@ -157,7 +157,7 @@ def get_args():
     parser.add_argument(
         "--num-layers",
         type=int,
-        default=6,
+        default=8,
         help="Number of interaction layers in the model",
     )
     parser.add_argument(
@@ -182,18 +182,18 @@ def get_args():
         "--norm-type", type=str, default="none", help="Du Normalization type"
     )
     parser.add_argument(
-        "--dropout", type=float, default=0.0, help="Dropout rate"
+        "--dropout", type=float, default=0.2, help="Dropout rate"
     )
     parser.add_argument(
         "--attention-dropout",
         type=float,
-        default=0.0,
+        default=0.2,
         help="Dropout rate for attention",
     )
     parser.add_argument(
         "--activation-dropout",
         type=float,
-        default=0.0,
+        default=0.2,
         help="Dropout rate for activation",
     )
     parser.add_argument(
