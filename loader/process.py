@@ -343,3 +343,7 @@ if __name__ == '__main__':
     from carbon import CarbonDataset
 
     dataset = CarbonDataset('../data/')
+
+    data = dataset[0]
+    print(data.pos.shape)
+    print(data.x.shape)
