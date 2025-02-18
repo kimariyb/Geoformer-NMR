@@ -5,9 +5,8 @@ from typing import List, Dict, Any
 from torch.utils.data import Subset, DataLoader
 from pytorch_lightning import LightningDataModule
 
-from loader.carbon import CarbonDataset
-from loader.hydrogen import HydrogenDataset
-from utils import make_splits
+from loaders.carbon import CarbonDataset
+from utils.splitter import make_splits
 
 
 class GeoformerDataCollator:
@@ -44,8 +43,12 @@ class GeoformerDataCollator:
             [self._pad_feats(feat["pos"], max_node) for feat in features]
         )
 
-        batch["label"] = torch.cat([self._pad_feats(feat["y"], max_node) for feat in features])
-        batch["mask"] = torch.cat([self._pad_feats(feat["mask"], max_node) for feat in features])
+        batch["label"] = torch.stack(
+            [self._pad_feats(feat["y"], max_node) for feat in features]
+        )
+        batch["mask"] = torch.stack(
+            [self._pad_feats(feat["others_mask"], max_node) for feat in features]
+        )
 
         return batch
 
@@ -63,8 +66,8 @@ class DataModule(LightningDataModule):
         if self.hparams["dataset"] == "carbon":
             self.dataset = CarbonDataset(self.hparams["dataset_root"],)
         elif self.hparams["dataset"] == "hydrogen":
-            self.dataset = HydrogenDataset(self.hparams["dataset_root"],)
-            
+            raise NotImplementedError("Hydrogen dataset is not implemented yet.")
+        
         self.idx_train, self.idx_val, self.idx_test = make_splits(
             dataset_len=len(self.dataset), 
             train_size=self.hparams["train_size"],

@@ -12,8 +12,7 @@ from pytorch_lightning.strategies import SingleDeviceStrategy
 
 from data import DataModule
 from module import LNNP
-from utils import LoadFromFile, number, save_argparse
-
+from utils.parser import save_argparse, number, LoadFromFile
 
 # clean cache before training
 gc.collect()
@@ -37,7 +36,7 @@ def get_args():
 
     # training settings
     parser.add_argument(
-        "--num-epochs", default=300, type=int, help="number of epochs"
+        "--num-epochs", default=500, type=int, help="number of epochs"
     )
     parser.add_argument(
         "--lr-warmup-steps",
@@ -70,7 +69,7 @@ def get_args():
     parser.add_argument(
         "--early-stopping-patience",
         type=int,
-        default=30,
+        default=100,
         help="Stop training after this many epochs without improvement",
     )
 
@@ -134,7 +133,7 @@ def get_args():
     parser.add_argument(
         "--num-workers",
         type=int,
-        default=6,
+        default=8,
         help="Number of workers for data prefetch",
     )
 
