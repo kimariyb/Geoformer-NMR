@@ -43,10 +43,10 @@ class GeoformerDataCollator:
             [self._pad_feats(feat["pos"], max_node) for feat in features]
         )
 
-        batch["label"] = torch.stack(
+        batch["label"] = torch.cat(
             [self._pad_feats(feat["y"], max_node) for feat in features]
         )
-        batch["mask"] = torch.stack(
+        batch["mask"] = torch.cat(
             [self._pad_feats(feat["others_mask"], max_node) for feat in features]
         )
 

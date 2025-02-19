@@ -21,7 +21,7 @@ class GeoformerMultiHeadAttention(nn.Module):
                 "The embedding_dim must be divisible by num_heads."
             )
 
-        self.act = nn.SiLU()
+        self.act = nn.LeakyReLU(negative_slope=0.1)
         self.cutoff = CosineCutoff(config.cutoff)
 
         self.dropout_module = nn.Dropout(
@@ -140,7 +140,7 @@ class GeoformerAttnBlock(nn.Module):
         self.embedding_dim = config.embedding_dim
         self.dropout_module = nn.Dropout(p=config.dropout, inplace=False)
 
-        self.act = nn.SiLU()
+        self.act = nn.LeakyReLU(negative_slope=0.1)
 
         self.self_attn = GeoformerMultiHeadAttention(config)
 
@@ -221,7 +221,7 @@ class GeoformerEncoder(nn.Module):
             trainable=config.rbf_trainable,
         )
         self.dist_proj = nn.Linear(config.num_rbf, self.embedding_dim)
-        self.act = nn.SiLU()
+        self.act = nn.LeakyReLU(negative_slope=0.1)
 
         self.layers = nn.ModuleList(
             [GeoformerAttnBlock(config) for _ in range(config.num_layers)]

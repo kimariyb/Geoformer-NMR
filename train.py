@@ -1,6 +1,5 @@
 import os
 import re
-import gc
 import argparse
 
 import torch
@@ -14,9 +13,6 @@ from data import DataModule
 from module import LNNP
 from utils.parser import save_argparse, number, LoadFromFile
 
-# clean cache before training
-gc.collect()
-torch.cuda.empty_cache()
 
 def get_args():
     parser = argparse.ArgumentParser(description="Training")
@@ -141,16 +137,16 @@ def get_args():
     parser.add_argument(
         "--max-z",
         type=int,
-        default=100,
+        default=80,
         help="Maximum atomic number that fits in the embedding matrix",
     )
     parser.add_argument(
-        "--embedding-dim", type=int, default=128, help="Embedding dimension"
+        "--embedding-dim", type=int, default=256, help="Embedding dimension"
     )
     parser.add_argument(
         "--ffn-embedding-dim",
         type=int,
-        default=256,
+        default=512,
         help="Embedding dimension for feedforward network",
     )
     parser.add_argument(

@@ -168,7 +168,8 @@ cython_debug/
 .idea/
 
 /data/
-/logs/
 
 # PyPI configuration file
 .pypirc
+
+logs/

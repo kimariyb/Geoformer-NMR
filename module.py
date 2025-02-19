@@ -2,10 +2,10 @@ import torch
 
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.nn.functional import l1_loss
 from pytorch_lightning import LightningModule
 
 from models.head import create_model
-from utils.metrics import get_metric_func
 
 
 class LNNP(LightningModule):
@@ -43,13 +43,13 @@ class LNNP(LightningModule):
         return self.model(batch)
 
     def training_step(self, batch, batch_idx):
-        return self.step(batch, get_metric_func('mae'), "train")
+        return self.step(batch, l1_loss, "train")
 
     def validation_step(self, batch, batch_idx):
-        return self.step(batch, get_metric_func('mae'), "val")
+        return self.step(batch, l1_loss, "val")
 
     def test_step(self, batch, batch_idx):
-        return self.step(batch, get_metric_func('mae'), "test")
+        return self.step(batch, l1_loss, "test")
 
     def step(self, batch, loss_fn, stage):
         with torch.set_grad_enabled(stage == "train"):
