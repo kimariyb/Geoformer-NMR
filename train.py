@@ -1,5 +1,6 @@
 import os
 import re
+import gc
 import argparse
 
 import torch
@@ -11,7 +12,7 @@ from pytorch_lightning.strategies import SingleDeviceStrategy
 
 from data import DataModule
 from module import LNNP
-from utils.parser import save_argparse, number, LoadFromFile
+from utils.parser import LoadFromFile, number, save_argparse
 
 
 def get_args():
@@ -40,7 +41,7 @@ def get_args():
         default=0,
         help="How many steps to warm-up over. Defaults to 0 for no warm-up",
     )
-    parser.add_argument("--lr", default=2e-4, type=float, help="learning rate")
+    parser.add_argument("--lr", default=1e-3, type=float, help="learning rate")
     parser.add_argument(
         "--lr-patience",
         type=int,
@@ -60,7 +61,7 @@ def get_args():
         help="Minimum learning rate before early stop",
     )
     parser.add_argument(
-        "--weight-decay", type=float, default=1e-5, help="Weight decay strength"
+        "--weight-decay", type=float, default=1e-10, help="Weight decay strength"
     )
     parser.add_argument(
         "--early-stopping-patience",
@@ -86,6 +87,15 @@ def get_args():
         type=int,
         help="Maximum number of nodes for padding in the dataset",
     )
+    parser.add_argument(
+        "--mean", default=None, type=float, help="Mean of the dataset"
+    )
+    parser.add_argument(
+        "--std",
+        default=None,
+        type=float,
+        help="Standard deviation of the dataset",
+    )
 
     # dataloader specific
     parser.add_argument(
@@ -95,18 +105,13 @@ def get_args():
         help="Reload dataloaders every n epoch",
     )
     parser.add_argument(
-        "--batch-size", default=32, type=int, help="batch size"
+        "--batch-size", default=128, type=int, help="batch size"
     )
     parser.add_argument(
         "--inference-batch-size",
         default=None,
         type=int,
         help="Batchsize for validation and tests.",
-    )
-    parser.add_argument(
-        "--splits",
-        default=None,
-        help="Npz with splits idx_train, idx_val, idx_test",
     )
     parser.add_argument(
         "--train-size",
@@ -137,22 +142,22 @@ def get_args():
     parser.add_argument(
         "--max-z",
         type=int,
-        default=80,
+        default=100,
         help="Maximum atomic number that fits in the embedding matrix",
     )
     parser.add_argument(
-        "--embedding-dim", type=int, default=256, help="Embedding dimension"
+        "--embedding-dim", type=int, default=128, help="Embedding dimension"
     )
     parser.add_argument(
         "--ffn-embedding-dim",
         type=int,
-        default=512,
+        default=256,
         help="Embedding dimension for feedforward network",
     )
     parser.add_argument(
         "--num-layers",
         type=int,
-        default=8,
+        default=6,
         help="Number of interaction layers in the model",
     )
     parser.add_argument(
@@ -174,7 +179,7 @@ def get_args():
         help="If distance expansion functions should be trainable",
     )
     parser.add_argument(
-        "--norm-type", type=str, default="none", help="Du Normalization type"
+        "--norm-type", type=str, default="max_min", help="Du Normalization type"
     )
     parser.add_argument(
         "--dropout", type=float, default=0.2, help="Dropout rate"
@@ -299,6 +304,7 @@ def main():
 
     data = DataModule(args)
     data.prepare_dataset()
+    args.mean, args.std = data.mean, data.std
 
     model = LNNP(args)
 

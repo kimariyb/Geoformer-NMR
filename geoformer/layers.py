@@ -26,6 +26,7 @@ class CosineCutoff(nn.Module):
     def forward(self, distances):
         cutoffs = 0.5 * (torch.cos(distances * math.pi / self.cutoff) + 1.0)
         cutoffs = cutoffs * (distances < self.cutoff).float()
+
         return cutoffs
 
 
@@ -71,6 +72,7 @@ class ExpNormalSmearing(nn.Module):
         betas = torch.tensor(
             [(2 / self.num_rbf * (1 - start_value)) ** -2] * self.num_rbf
         )
+
         return means, betas
 
     def reset_parameters(self):
@@ -141,6 +143,7 @@ class VecLayerNorm(nn.Module):
 
         max_val, _ = torch.max(dist, dim=-1)
         min_val, _ = torch.min(dist, dim=-1)
+        
         # delta: (B, N, 1)
         delta = max_val - min_val
         delta = torch.where(delta == 0, torch.ones_like(delta), delta)

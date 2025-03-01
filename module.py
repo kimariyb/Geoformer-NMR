@@ -1,11 +1,11 @@
 import torch
 
+from pytorch_lightning import LightningModule
+from torch.nn.functional import l1_loss
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-from torch.nn.functional import l1_loss
-from pytorch_lightning import LightningModule
 
-from models.head import create_model
+from geoformer.model import create_model
 
 
 class LNNP(LightningModule):
@@ -22,7 +22,7 @@ class LNNP(LightningModule):
             lr=self.hparams.lr,
             weight_decay=self.hparams.weight_decay,
         )
-
+            
         scheduler = ReduceLROnPlateau(
             optimizer,
             "min",
@@ -30,17 +30,20 @@ class LNNP(LightningModule):
             patience=self.hparams.lr_patience,
             min_lr=self.hparams.lr_min,
         )
+
         lr_scheduler = {
             "scheduler": scheduler,
             "monitor": "val_loss",
             "interval": "epoch",
             "frequency": 1,
         }
-
+       
         return [optimizer], [lr_scheduler]
 
     def forward(self, batch):
-        return self.model(batch)
+        z, pos, shift, mask = batch
+        label = shift[mask]
+        return self.model(z=z, pos=pos, mask=mask), label
 
     def training_step(self, batch, batch_idx):
         return self.step(batch, l1_loss, "train")
@@ -53,10 +56,11 @@ class LNNP(LightningModule):
 
     def step(self, batch, loss_fn, stage):
         with torch.set_grad_enabled(stage == "train"):
-            pred = self(batch)
+            pred, label = self(batch)
 
-        label, mask = batch["label"], batch["mask"]
-        loss = loss_fn(pred, label[mask])
+        loss = 0.0
+
+        loss = loss_fn(pred, label)
         self.losses[stage].append(loss.detach())
 
         return loss

@@ -1,27 +1,32 @@
+from typing import Optional
+
+import ase
 import torch
 import torch.nn as nn
 
-from typing import Optional
 from einops import rearrange, repeat
+from transformers import PreTrainedModel
 
-from models.layers import CosineCutoff, ExpNormalSmearing, VecLayerNorm
-                    
-                                                    
+from geoformer.config import GeoformerConfig
+from geoformer.layers import CosineCutoff, ExpNormalSmearing, VecLayerNorm
+
+
 class GeoformerMultiHeadAttention(nn.Module):
     def __init__(self, config, *args, **kwargs) -> None:
         super(GeoformerMultiHeadAttention, self).__init__(*args, **kwargs)
 
         self.embedding_dim = config.embedding_dim
-        self.num_heads = config.num_attention_heads
-        self.head_dim = config.embedding_dim // config.num_attention_heads
+        self.num_heads = config.num_heads
+        self.head_dim = config.embedding_dim // config.num_heads
+
         if not (
-            self.head_dim * config.num_attention_heads == self.embedding_dim
+            self.head_dim * config.num_heads == self.embedding_dim
         ):
             raise AssertionError(
                 "The embedding_dim must be divisible by num_heads."
             )
 
-        self.act = nn.LeakyReLU(negative_slope=0.1)
+        self.act = nn.SiLU()
         self.cutoff = CosineCutoff(config.cutoff)
 
         self.dropout_module = nn.Dropout(
@@ -140,7 +145,7 @@ class GeoformerAttnBlock(nn.Module):
         self.embedding_dim = config.embedding_dim
         self.dropout_module = nn.Dropout(p=config.dropout, inplace=False)
 
-        self.act = nn.LeakyReLU(negative_slope=0.1)
+        self.act = nn.SiLU()
 
         self.self_attn = GeoformerMultiHeadAttention(config)
 
@@ -221,7 +226,7 @@ class GeoformerEncoder(nn.Module):
             trainable=config.rbf_trainable,
         )
         self.dist_proj = nn.Linear(config.num_rbf, self.embedding_dim)
-        self.act = nn.LeakyReLU(negative_slope=0.1)
+        self.act = nn.SiLU()
 
         self.layers = nn.ModuleList(
             [GeoformerAttnBlock(config) for _ in range(config.num_layers)]
@@ -292,3 +297,115 @@ class GeoformerEncoder(nn.Module):
             )
 
         return x, edge_attr
+
+
+class GeoformerScalarDecoder(nn.Module):
+    def __init__(self, config, *args, **kwargs) -> None:
+        super(GeoformerScalarDecoder, self).__init__(*args, **kwargs)
+
+        self.embedding_dim = config.embedding_dim
+        self.act = nn.PReLU()
+        self.readout = nn.Sequential(
+            nn.Linear(self.embedding_dim, self.embedding_dim // 2),
+            self.act,
+            nn.Linear(self.embedding_dim // 2, 1),
+        )
+
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        nn.init.xavier_uniform_(self.readout[0].weight)
+        self.readout[0].bias.data.fill_(0.0)
+        nn.init.xavier_uniform_(self.readout[2].weight)
+        self.readout[2].bias.data.fill_(0.0)
+
+    def forward(
+        self,
+        x: torch.Tensor,  # (B, N, F)
+        edge_attr: torch.Tensor,  # (B, N, N, F)
+        **kwargs,
+    ):
+        return self.readout(x) + edge_attr.sum() * 0
+
+
+class GeoformerModel(PreTrainedModel):
+    def __init__(self, config, *inputs, **kwargs):
+        super(GeoformerModel, self).__init__(config, *inputs, **kwargs)
+
+        self.geo_encoder = GeoformerEncoder(config)
+        self.geo_decoder = GeoformerScalarDecoder(config)
+
+        self.post_init()
+
+    def init_weights(self):
+        self.geo_encoder.reset_parameters()
+        self.geo_decoder.reset_parameters()
+
+
+class GeoformerForNMRRegression(GeoformerModel):
+    def __init__(self, config, *inputs, **kwargs):
+        super(GeoformerForNMRRegression, self).__init__(
+            config, *inputs, **kwargs
+        )
+
+        self.config = config
+        self.pad_token_id = config.pad_token_id
+
+        mean = torch.scalar_tensor(0) if config.mean is None else config.mean 
+        if not isinstance(mean, torch.Tensor):
+            mean = torch.tensor(mean).float()
+        self.register_buffer("mean", mean)
+
+        std = torch.scalar_tensor(1) if config.std is None else config.std
+        if not isinstance(std, torch.Tensor):
+            std = torch.tensor(std).float()
+        self.register_buffer("std", std)
+
+    def forward(
+        self,
+        z: torch.Tensor,  # (B, N)
+        pos: torch.Tensor,  # (B, N, 3)
+        mask: torch.Tensor, # (B, N)
+        **kwargs,
+    ):
+        x, edge_attr = self.geo_encoder(z=z, pos=pos)
+
+        padding_mask = z == self.pad_token_id  # (B, N)
+
+        # (B, N, 1) or (B, N, 3)
+        x = self.geo_decoder(
+            x=x, edge_attr=edge_attr, z=z, pos=pos, padding_mask=padding_mask
+        )
+
+        logits = x.masked_fill(padding_mask.unsqueeze(-1), 0.0)[mask][:, 0]  # (B, N, 1)
+
+        if self.std is not None:
+            logits = logits * self.std
+
+        if self.mean is not None:
+            logits = logits + self.mean
+
+        return logits
+
+
+def create_model(config) -> GeoformerForNMRRegression:
+    model_config = GeoformerConfig(
+        max_z=config.max_z,
+        embedding_dim=config.embedding_dim,
+        ffn_embedding_dim=config.ffn_embedding_dim,
+        num_layers=config.num_layers,
+        num_attention_heads=config.num_heads,
+        cutoff=config.cutoff,
+        num_rbf=config.num_rbf,
+        rbf_trainable=config.trainable_rbf,
+        norm_type=config.norm_type,
+        dropout=config.dropout,
+        attention_dropout=config.attention_dropout,
+        activation_dropout=config.activation_dropout,
+        dataset_root=config.dataset_root,
+        mean=config.mean,
+        std=config.std,
+        pad_token_id=config.pad_token_id,
+    )
+
+    return GeoformerForNMRRegression(config=model_config)

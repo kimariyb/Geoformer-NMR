@@ -15,7 +15,7 @@ class GeoformerConfig(PretrainedConfig):
         embedding_dim: int = 512,
         ffn_embedding_dim: int = 2048,
         num_layers: int = 9,
-        num_attention_heads: int = 8,
+        num_heads: int = 8,
         cutoff: int = 5.0,
         num_rbf: int = 64,
         rbf_trainable: bool = True,
@@ -24,7 +24,8 @@ class GeoformerConfig(PretrainedConfig):
         attention_dropout: float = 0.0,
         activation_dropout: float = 0.0,
         dataset_root=None,
-        dataset=None,
+        mean=None,
+        std=None,
         pad_token_id: int = 0,
         **kwargs
     ):
@@ -32,7 +33,7 @@ class GeoformerConfig(PretrainedConfig):
         self.embedding_dim = embedding_dim
         self.ffn_embedding_dim = ffn_embedding_dim
         self.num_layers = num_layers
-        self.num_attention_heads = num_attention_heads
+        self.num_heads = num_heads
         self.cutoff = cutoff
         self.num_rbf = num_rbf
         self.rbf_trainable = rbf_trainable
@@ -41,7 +42,8 @@ class GeoformerConfig(PretrainedConfig):
         self.attention_dropout = attention_dropout
         self.activation_dropout = activation_dropout
         self.dataset_root = dataset_root
-        self.dataset = dataset
+        self.mean = mean
+        self.std = std
 
         super(GeoformerConfig, self).__init__(
             pad_token_id=pad_token_id, **kwargs

@@ -1,4 +1,5 @@
 import re
+import argparse
 
 from rdkit import Chem, RDLogger
 from tqdm import tqdm
@@ -37,12 +38,7 @@ def create_hydrogen_dataset(data_path: str):
     for mol in tqdm(suppl, desc="Validating dataset", total=len(suppl)):
         # Check if the molecule is valid
         if mol is None:
-            continue
-        # Only consider molecules with less than 30 atoms
-        if mol.GetNumAtoms() >= 40:
-            continue
-        # Only consider molecules with H, C, N, O, F, Si, P, S, Cl, Br, and I atoms
-        if not all(atom.GetAtomicNum() in [1, 6, 7, 8, 9, 14, 15, 16, 17, 35, 53] for atom in mol.GetAtoms()):
+            print(f"Invalid molecule found in {data_path}")
             continue
         
         # get the properties of the molecule
@@ -79,12 +75,15 @@ def create_carbon_dataset(data_path: str):
     for mol in tqdm(suppl, desc="Validating dataset", total=len(suppl)):
         # Check if the molecule is valid
         if mol is None:
+            print(f"Invalid molecule found in {data_path}")
             continue
-        # Only consider molecules with less than 30 atoms
+        # Only consider molecules with less than 50 atoms
         if mol.GetNumAtoms() >= 40:
+            print(f"Invalid number of atoms found in {data_path}")
             continue
         # Only consider molecules with H, C, N, O, F, Si, P, S, Cl, Br, and I atoms
         if not all(atom.GetAtomicNum() in [1, 6, 7, 8, 9, 14, 15, 16, 17, 35, 53] for atom in mol.GetAtoms()):
+            print(f"Invalid element found in {data_path}")
             continue
         
         # get the properties of the molecule
@@ -120,9 +119,7 @@ def create_fluorine_dataset(data_path: str):
     for mol in tqdm(suppl, desc="Validating dataset", total=len(suppl)):
         # Check if the molecule is valid
         if mol is None:
-            continue
-        # Only consider molecules with H, C, N, O, F, Si, P, S, Cl, Br, and I atoms
-        if not all(atom.GetAtomicNum() in [1, 6, 7, 8, 9, 14, 15, 16, 17, 35, 53] for atom in mol.GetAtoms()):
+            print(f"Invalid molecule found in {data_path}")
             continue
         
         # get the properties of the molecule
@@ -164,9 +161,9 @@ def create_dataset(data_path: str, element: str = 'carbon'):
         raise ValueError("Invalid element specified. Options: 'carbon', 'hydrogen', 'fluorine'")
 
 if __name__ == "__main__":
-    create_dataset(data_path='./data/nmrshiftdb2withsignals_3d.sd', element='carbon')
+    args = argparse.ArgumentParser()
+    args.add_argument('--element', '-e', type=str, required=True, help='The element to create the dataset for. Options: "carbon", "hydrogen", "fluorine"')
     
-
-
-  
-
+    args = args.parse_args()
+    
+    create_dataset(data_path='./data/nmrshiftdb2withsignals_3d.sd', element=args.element)
