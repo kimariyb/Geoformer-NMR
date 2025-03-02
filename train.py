@@ -51,7 +51,7 @@ def get_args():
     parser.add_argument(
         "--lr-min",
         type=float,
-        default=1e-6,
+        default=1e-07,
         help="Minimum learning rate before early stop",
     )
     parser.add_argument(
@@ -61,7 +61,7 @@ def get_args():
         help="Minimum learning rate before early stop",
     )
     parser.add_argument(
-        "--weight-decay", type=float, default=1e-10, help="Weight decay strength"
+        "--weight-decay", type=float, default=1e-8, help="Weight decay strength"
     )
     parser.add_argument(
         "--early-stopping-patience",
@@ -146,22 +146,22 @@ def get_args():
         help="Maximum atomic number that fits in the embedding matrix",
     )
     parser.add_argument(
-        "--embedding-dim", type=int, default=128, help="Embedding dimension"
+        "--embedding-dim", type=int, default=256, help="Embedding dimension"
     )
     parser.add_argument(
         "--ffn-embedding-dim",
         type=int,
-        default=256,
+        default=1024,
         help="Embedding dimension for feedforward network",
     )
     parser.add_argument(
         "--num-layers",
         type=int,
-        default=6,
+        default=5,
         help="Number of interaction layers in the model",
     )
     parser.add_argument(
-        "--num-heads", type=int, default=8, help="Number of attention heads"
+        "--num-heads", type=int, default=32, help="Number of attention heads"
     )
     parser.add_argument(
         "--cutoff", type=float, default=5.0, help="Cutoff in model"
@@ -304,7 +304,7 @@ def main():
 
     data = DataModule(args)
     data.prepare_dataset()
-    args.mean, args.std = data.mean, data.std
+    args.mean, args.std = float(data.mean), float(data.std)
 
     model = LNNP(args)
 

@@ -10,6 +10,7 @@ from tqdm import tqdm
 from utils.loader import CarbonDatasetBuilder, ChemicalShiftDataset
 from utils.collator import GeoformerDataCollator
 
+
 class DataModule(LightningDataModule):
     def __init__(self, hparams):
         super(DataModule, self).__init__()

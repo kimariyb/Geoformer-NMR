@@ -305,19 +305,20 @@ class GeoformerScalarDecoder(nn.Module):
 
         self.embedding_dim = config.embedding_dim
         self.act = nn.PReLU()
+
         self.readout = nn.Sequential(
-            nn.Linear(self.embedding_dim, self.embedding_dim // 2),
-            self.act,
-            nn.Linear(self.embedding_dim // 2, 1),
+            nn.Linear(self.embedding_dim, self.embedding_dim // 2), self.act, nn.Dropout(0.2),
+            nn.Linear(self.embedding_dim // 2, 1)
         )
 
         self.reset_parameters()
 
     def reset_parameters(self):
-        nn.init.xavier_uniform_(self.readout[0].weight)
+        nn.init.kaiming_normal_(self.readout[0].weight)
+        nn.init.kaiming_normal_(self.readout[3].weight)
         self.readout[0].bias.data.fill_(0.0)
-        nn.init.xavier_uniform_(self.readout[2].weight)
-        self.readout[2].bias.data.fill_(0.0)
+        self.readout[3].bias.data.fill_(0.0)
+
 
     def forward(
         self,
