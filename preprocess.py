@@ -38,7 +38,17 @@ def create_hydrogen_dataset(data_path: str):
     for mol in tqdm(suppl, desc="Validating dataset", total=len(suppl)):
         # Check if the molecule is valid
         if mol is None:
-            print(f"Invalid molecule found in {data_path}")
+            continue
+        
+        # Only consider molecules with less than 40 atoms
+        if mol.GetNumAtoms() >= 40:
+            continue
+
+        # Only consider molecules with H, C, N, O, F, Si, P, S, Cl, Br, and I atoms
+        if not all(atom.GetAtomicNum() in [1, 6, 7, 8, 9, 14, 15, 16, 17, 35, 53] for atom in mol.GetAtoms()):
+            continue
+                
+        if any(atom.GetFormalCharge() != 0 for atom in mol.GetAtoms()):
             continue
         
         # get the properties of the molecule
@@ -75,15 +85,17 @@ def create_carbon_dataset(data_path: str):
     for mol in tqdm(suppl, desc="Validating dataset", total=len(suppl)):
         # Check if the molecule is valid
         if mol is None:
-            print(f"Invalid molecule found in {data_path}")
             continue
-        # Only consider molecules with less than 50 atoms
+
+        # Only consider molecules with less than 40 atoms
         if mol.GetNumAtoms() >= 40:
-            print(f"Invalid number of atoms found in {data_path}")
             continue
+
         # Only consider molecules with H, C, N, O, F, Si, P, S, Cl, Br, and I atoms
         if not all(atom.GetAtomicNum() in [1, 6, 7, 8, 9, 14, 15, 16, 17, 35, 53] for atom in mol.GetAtoms()):
-            print(f"Invalid element found in {data_path}")
+            continue
+        
+        if any(atom.GetFormalCharge() != 0 for atom in mol.GetAtoms()):
             continue
         
         # get the properties of the molecule
@@ -166,4 +178,4 @@ if __name__ == "__main__":
     
     args = args.parse_args()
     
-    create_dataset(data_path='./data/nmrshiftdb2withsignals_3d.sd', element=args.element)
+    create_dataset(data_path='./data/dataset/nmrshiftdb2withsignals_3d.sd', element=args.element)

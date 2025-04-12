@@ -1,11 +1,12 @@
-from typing import Optional
 
-import ase
 import torch
 import torch.nn as nn
 
 from einops import rearrange, repeat
+from torch_geometric.nn import Set2Set
+
 from transformers import PreTrainedModel
+from typing import Optional
 
 from geoformer.config import GeoformerConfig
 from geoformer.layers import CosineCutoff, ExpNormalSmearing, VecLayerNorm
@@ -68,72 +69,60 @@ class GeoformerMultiHeadAttention(nn.Module):
 
     def forward(
         self,
-        x: torch.Tensor,  # (B, N, F)
-        vec: Optional[torch.Tensor],  # (B, N, N, 3)
-        dist: Optional[torch.Tensor],  # (B, N, N)
-        edge_attr: Optional[torch.Tensor],  # (B, N, N, F)
-        key_padding_mask: Optional[torch.Tensor] = None,  # (B, N)
+        x: torch.Tensor,  # (N, F)
+        vec: Optional[torch.Tensor],  # (N, N, 3)
+        dist: Optional[torch.Tensor],  # (N, N)
+        edge_attr: Optional[torch.Tensor],  # (N, N, F)
         **kwargs,
     ):
         q = rearrange(
-            self.q_proj(x), "b n (h d) -> (b h) n d", h=self.num_heads
-        )  # (BH, N, D)
+            self.q_proj(x), "n (h d) -> h n d", h=self.num_heads
+        )  # (H, N, D)
         k = rearrange(
-            self.k_proj(x), "b n (h d) -> (b h) n d", h=self.num_heads
-        )  # (BH, N, D)
+            self.k_proj(x), "n (h d) -> h n d", h=self.num_heads
+        )  # (H, N, D)
         v = rearrange(
-            self.v_proj(x), "b n (h d) -> (b h) n d", h=self.num_heads
-        )  # (BH, N, D)
+            self.v_proj(x), "n (h d) -> h n d", h=self.num_heads
+        )  # (H, N, D)
         dk = rearrange(
             self.act(self.dk_proj(edge_attr)),
-            "b n m (h d) -> (b h) n m d",
+            "n m (h d) -> h n m d",
             h=self.num_heads,
-        )  # (BH, N, N, D)
+        )  # (H, N, N, D)
 
-        attn_weights = ((q.unsqueeze(-2) * k.unsqueeze(-3)) * dk).sum(
-            dim=-1
-        )  # (BH, N, N)
-
-        if key_padding_mask is not None:
-            attn_weights = rearrange(
-                attn_weights, "(b h) n m -> b h n m", h=self.num_heads
-            )
-            attn_weights = attn_weights.masked_fill(
-                rearrange(key_padding_mask, "b n m -> b () n m"),
-                0.0,
-            )
-            attn_weights = rearrange(attn_weights, "b h n m -> (b h) n m")
+        attn_weights = torch.einsum(
+            "h n d, h n e, h n m d -> h n m", q, k, dk
+        )  # (H, N, N)
 
         attn_scale = repeat(
-            self.cutoff(dist), "b n m -> b h n m", h=self.num_heads
-        )  # (BH, N, N)
+            self.cutoff(dist), "n m -> h n m", h=self.num_heads
+        )  # (H, N, N)
         attn_scale = rearrange(
-            attn_scale, "b h n m -> (b h) n m", h=self.num_heads
-        )  # (BH, N, N)
-        attn_probs = self.act(attn_weights) * attn_scale  # (BH, N, N)
+            attn_scale, "h n m -> (h) n m", h=self.num_heads
+        )  # H, N, N)
+        attn_probs = self.act(attn_weights) * attn_scale  # (H, N, N)
 
         attn_per_nodes = attn_probs.unsqueeze(-1) * v.unsqueeze(
             -3
-        )  # (BH, N, N, D)
+        )  # (H, N, N, D)
         attn_per_nodes = rearrange(
-            attn_per_nodes, "(b h) n m d -> b n m (h d)", h=self.num_heads
-        )  # (B, N, N, F)
-        attn = attn_per_nodes.sum(dim=2)  # (B, N, F)
+            attn_per_nodes, "(h) n m d -> n m (h d)", h=self.num_heads
+        )  # (N, N, F)
+        attn = attn_per_nodes.sum(dim=1)  # (N, F)
 
         du = (
             self.du_update_proj(attn_per_nodes)
-            .masked_fill(key_padding_mask.unsqueeze(-1), 0.0)
             .unsqueeze(-2)
             * vec.unsqueeze(-1)
         ).sum(
             dim=-3
-        )  # (B, N, 3, F)
-        du = self.du_norm(du)  # (B, N, 3, F)
+        )  # (N, 3, F)
+        du = self.du_norm(du)  # (N, 3, F)
         ws, wt = torch.split(
             self.dihedral_proj(du), self.embedding_dim, dim=-1
-        )  # (B, N, 3, F)
-        ipe = (wt.unsqueeze(1) * ws.unsqueeze(2)).sum(dim=-2)  # (B, N, N, F)
-        ipe = self.act(self.edge_attr_update(edge_attr)) * ipe  # (B, N, N, F)
+        )  # (N, 3, F)
+        ipe = (wt.unsqueeze(0) * ws.unsqueeze(1)).sum(dim=-2)  # (N, N, F)
+        ipe = self.act(self.edge_attr_update(edge_attr)) * ipe  # (N, N, F)
 
         return attn, ipe
 
@@ -172,13 +161,10 @@ class GeoformerAttnBlock(nn.Module):
 
     def forward(
         self,
-        x: torch.Tensor,  # (B, N, F)
-        vec: torch.Tensor,  # (B, N, N, 3)
-        dist: torch.Tensor,  # (B, N, N)
-        edge_attr: torch.Tensor,  # (B, N, N, ?)
-        key_padding_mask: Optional[
-            torch.Tensor
-        ],  # [padding, cutoff] (B, N, N)
+        x: torch.Tensor,  # (N, F)
+        vec: torch.Tensor,  # (N, N, 3)
+        dist: torch.Tensor,  # (N, N)
+        edge_attr: torch.Tensor,  # (N, N, F)
         **kwargs,
     ):
         # attention
@@ -188,7 +174,6 @@ class GeoformerAttnBlock(nn.Module):
             vec=vec,
             dist=dist,
             edge_attr=edge_attr,
-            key_padding_mask=key_padding_mask,
         )
 
         x = self.dropout_module(x)
@@ -212,14 +197,11 @@ class GeoformerAttnBlock(nn.Module):
 class GeoformerEncoder(nn.Module):
     def __init__(self, config, *args, **kwargs) -> None:
         super(GeoformerEncoder, self).__init__(*args, **kwargs)
-
-        self.pad_token_id = config.pad_token_id
         self.embedding_dim = config.embedding_dim
         self.cutoff = config.cutoff
 
-        self.embedding = nn.Embedding(
-            config.max_z, self.embedding_dim, padding_idx=self.pad_token_id
-        )
+        self.embedding = nn.Embedding(config.max_z, self.embedding_dim)
+        
         self.distance_expansion = ExpNormalSmearing(
             cutoff=config.cutoff,
             num_rbf=config.num_rbf,
@@ -247,110 +229,55 @@ class GeoformerEncoder(nn.Module):
 
     def forward(
         self,
-        z: torch.Tensor,  # (B, N)
-        pos: torch.Tensor,  # (B, N, 3)
+        z: torch.Tensor,  # (N)
+        pos: torch.Tensor,  # (N, 3)
         **kwargs,
-    ):
-        B, N, *_ = z.shape
-        # generate mask
-        padding_mask = z == self.pad_token_id  # (B, N)
-        pos_mask = ~(
-            padding_mask.unsqueeze(1) | padding_mask.unsqueeze(2)
-        )  # (B, N, N)
+    ):      
         dist = torch.norm(
-            pos.unsqueeze(1) - pos.unsqueeze(2), dim=-1
-        )  # (B, N, N)
-        loop_mask = torch.eye(N, dtype=torch.bool, device=dist.device)
-        loop_mask = repeat(loop_mask, "n m -> b n m", b=B)  # (B, N, N)
-        dist = dist.masked_fill(loop_mask, 0.0)  # (B, N, N)
-        adj_mask = (dist < self.cutoff) & pos_mask  # (B, N, N)
-        loop_adj_mask = ~loop_mask & adj_mask  # (B, N, N)
-
-        vec = (pos.unsqueeze(1) - pos.unsqueeze(2)) / (
+            pos.unsqueeze(1) - pos.unsqueeze(0),
+            dim=-1,
+        ) # (N, N)
+    
+        vec = (pos.unsqueeze(1) - pos.unsqueeze(0)) / (
             dist.unsqueeze(-1) + 1e-8
-        )  # (B, N, N, 3)
-        vec = vec.masked_fill(
-            ~loop_adj_mask.unsqueeze(-1), 0.0
-        )  # (B, N, N, 3)
+        )  # (N, N, 3)
 
-        key_padding_mask = (
-            (~adj_mask)
-            .masked_fill(padding_mask.unsqueeze(-1), False)
-            .masked_fill(padding_mask.unsqueeze(-2), True)
-        )
-
-        x = self.embedding(z)  # (B, N, F)
-        x = self.x_in_layernorm(x)
-        edge_attr = self.distance_expansion(dist)  # (B, N, N, num_rbf)
-        edge_attr = self.act(self.dist_proj(edge_attr))  # (B, N, N, F)
-        edge_attr = edge_attr.masked_fill(
-            ~adj_mask.unsqueeze(-1), 0.0
-        )  # (B, N, N, F)
-
+        x = self.embedding(z)  # (N, F)
+        x = self.x_in_layernorm(x) # (N, F)
+        edge_attr = self.distance_expansion(dist)  # (N, N, num_rbf)
+        edge_attr = self.act(self.dist_proj(edge_attr))  # (N, N, F)
+        
         for layer in self.layers:
             x, edge_attr = layer(
                 x=x,
                 vec=vec,
                 dist=dist,
                 edge_attr=edge_attr,
-                key_padding_mask=key_padding_mask,
             )
 
         return x, edge_attr
 
 
-class GeoformerScalarDecoder(nn.Module):
-    def __init__(self, config, *args, **kwargs) -> None:
-        super(GeoformerScalarDecoder, self).__init__(*args, **kwargs)
-
-        self.embedding_dim = config.embedding_dim
-        self.act = nn.PReLU()
-
-        self.readout = nn.Sequential(
-            nn.Linear(self.embedding_dim, self.embedding_dim // 2), self.act, nn.Dropout(0.2),
-            nn.Linear(self.embedding_dim // 2, 1)
-        )
-
-        self.reset_parameters()
-
-    def reset_parameters(self):
-        nn.init.kaiming_normal_(self.readout[0].weight)
-        nn.init.kaiming_normal_(self.readout[3].weight)
-        self.readout[0].bias.data.fill_(0.0)
-        self.readout[3].bias.data.fill_(0.0)
-
-
-    def forward(
-        self,
-        x: torch.Tensor,  # (B, N, F)
-        edge_attr: torch.Tensor,  # (B, N, N, F)
-        **kwargs,
-    ):
-        return self.readout(x) + edge_attr.sum() * 0
-
-
-class GeoformerModel(PreTrainedModel):
+class GeoformerSpectraRegression(PreTrainedModel):
     def __init__(self, config, *inputs, **kwargs):
-        super(GeoformerModel, self).__init__(config, *inputs, **kwargs)
-
-        self.geo_encoder = GeoformerEncoder(config)
-        self.geo_decoder = GeoformerScalarDecoder(config)
-
-        self.post_init()
-
-    def init_weights(self):
-        self.geo_encoder.reset_parameters()
-        self.geo_decoder.reset_parameters()
-
-
-class GeoformerForNMRRegression(GeoformerModel):
-    def __init__(self, config, *inputs, **kwargs):
-        super(GeoformerForNMRRegression, self).__init__(
+        super(GeoformerSpectraRegression, self).__init__(
             config, *inputs, **kwargs
         )
-
         self.config = config
-        self.pad_token_id = config.pad_token_id
+        self.geo_encoder = GeoformerEncoder(config)
+        
+        self.pred_hidden_feats = config.pred_hid_feats
+
+        self.readout_n = nn.Sequential(
+            nn.Linear(self.embedding_dim, self.pred_hidden_dim), nn.PReLU(), nn.Dropout(0.2),
+            nn.Linear(self.pred_hidden_dim, self.pred_hidden_dim), nn.PReLU(), nn.Dropout(0.2),
+            nn.Linear(self.pred_hidden_dim, self.pred_hidden_dim), nn.PReLU(), nn.Dropout(0.2),
+            nn.Linear(self.pred_hidden_dim, 1)
+        )
+        
+        self.readout_g = Set2Set(
+            in_channels=self.embedding_dim, processing_steps=3, num_layers=1
+        )
 
         mean = torch.scalar_tensor(0) if config.mean is None else config.mean 
         if not isinstance(mean, torch.Tensor):
@@ -361,39 +288,50 @@ class GeoformerForNMRRegression(GeoformerModel):
         if not isinstance(std, torch.Tensor):
             std = torch.tensor(std).float()
         self.register_buffer("std", std)
+        
+        self.init_weights() 
+        
+    def init_weights(self):
+        self.geo_encoder.reset_parameters()
 
-    def forward(
-        self,
-        z: torch.Tensor,  # (B, N)
-        pos: torch.Tensor,  # (B, N, 3)
-        mask: torch.Tensor, # (B, N)
-        **kwargs,
-    ):
-        x, edge_attr = self.geo_encoder(z=z, pos=pos)
+        nn.init.xavier_uniform_(self.readout_n[0].weight)
+        self.readout_n[0].bias.data.fill_(0.0)
+        nn.init.xavier_uniform_(self.readout_n[3].weight)
+        self.readout_n[3].bias.data.fill_(0.0)
+        nn.init.xavier_uniform_(self.readout_n[6].weight)
+        self.readout_n[6].bias.data.fill_(0.0)
+        nn.init.xavier_uniform_(self.readout_n[9].weight)
+        self.readout_n[9].bias.data.fill_(0.0)
 
-        padding_mask = z == self.pad_token_id  # (B, N)
+    def forward(self, data, **kwargs):
+        z, pos, mask, batch = data.z, data.pos, data.mask, data.batch
+        
+        node_embed_feats, _ = self.geo_encoder(z=z, pos=pos) # (N, F)
 
-        # (B, N, 1) or (B, N, 3)
-        x = self.geo_decoder(
-            x=x, edge_attr=edge_attr, z=z, pos=pos, padding_mask=padding_mask
+        graph_embed_feats = self.readout_g(node_embed_feats, batch) # (B, N, F)
+        graph_embed_feats = torch.repeat_interleave(
+            graph_embed_feats, repeats=node_embed_feats.shape[0] // graph_embed_feats.shape[0], dim=0
+        ) # (N, F)
+        
+        pred = self.readout_n(
+            torch.hstack([node_embed_feats, graph_embed_feats])[mask]
         )
-
-        logits = x.masked_fill(padding_mask.unsqueeze(-1), 0.0)[mask][:, 0]  # (B, N, 1)
-
+       
         if self.std is not None:
-            logits = logits * self.std
+            pred = pred * self.std
 
         if self.mean is not None:
-            logits = logits + self.mean
+            pred = pred + self.mean
 
-        return logits
+        return pred[:, 0]
 
 
-def create_model(config) -> GeoformerForNMRRegression:
+def create_model(config) -> GeoformerSpectraRegression:
     model_config = GeoformerConfig(
         max_z=config.max_z,
         embedding_dim=config.embedding_dim,
         ffn_embedding_dim=config.ffn_embedding_dim,
+        pred_hidden_dim=config.pred_hidden_dim,
         num_layers=config.num_layers,
         num_attention_heads=config.num_heads,
         cutoff=config.cutoff,
@@ -406,7 +344,6 @@ def create_model(config) -> GeoformerForNMRRegression:
         dataset_root=config.dataset_root,
         mean=config.mean,
         std=config.std,
-        pad_token_id=config.pad_token_id,
     )
 
-    return GeoformerForNMRRegression(config=model_config)
+    return GeoformerSpectraRegression(config=model_config)

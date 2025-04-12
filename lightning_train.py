@@ -1,6 +1,5 @@
 import os
 import re
-import gc
 import argparse
 
 import torch
@@ -10,9 +9,9 @@ from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint, ModelSum
 from pytorch_lightning.loggers import CSVLogger, TensorBoardLogger
 from pytorch_lightning.strategies import SingleDeviceStrategy
 
-from data import DataModule
-from module import LNNP
-from utils.parser import LoadFromFile, number, save_argparse
+from lightning_data import DataModule
+from lightning_module import LNNP
+from lightning_utils import number, save_argparse, LoadFromFile
 
 
 def get_args():
@@ -82,12 +81,6 @@ def get_args():
         "--dataset-root", default='./data', type=str, help="Data storage directory"
     )
     parser.add_argument(
-        "--max-nodes",
-        default=None,
-        type=int,
-        help="Maximum number of nodes for padding in the dataset",
-    )
-    parser.add_argument(
         "--mean", default=None, type=float, help="Mean of the dataset"
     )
     parser.add_argument(
@@ -142,7 +135,7 @@ def get_args():
     parser.add_argument(
         "--max-z",
         type=int,
-        default=100,
+        default=53,
         help="Maximum atomic number that fits in the embedding matrix",
     )
     parser.add_argument(
@@ -153,6 +146,12 @@ def get_args():
         type=int,
         default=1024,
         help="Embedding dimension for feedforward network",
+    )
+    parser.add_argument(
+        "--pred-hidden-dim",
+        type=int,
+        default=512,
+        help="Hidden dimension for prediction",
     )
     parser.add_argument(
         "--num-layers",
@@ -196,10 +195,6 @@ def get_args():
         default=0.2,
         help="Dropout rate for activation",
     )
-    parser.add_argument(
-        "--pad-token-id", type=int, default=0, help="Padding token id"
-    )
-
     # other specific
     parser.add_argument(
         "--num-nodes", type=int, default=1, help="Number of nodes"
@@ -258,7 +253,8 @@ def get_args():
 def auto_exp(args):
     dir_name = (
         f"bs_{args.batch_size}"
-        + f"_L{args.num_layers}_D{args.embedding_dim}_F{args.ffn_embedding_dim}"
+        + f"_L{args.num_layers}"
+        + f"_D{args.embedding_dim}_F{args.ffn_embedding_dim}_P{args.pred_hidden_dim}"
         + f"_H{args.num_heads}_rbf_{args.num_rbf}"
         + f"_norm_{args.norm_type}"
         + f"_lr_{args.lr}"

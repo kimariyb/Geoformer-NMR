@@ -14,6 +14,7 @@ class GeoformerConfig(PretrainedConfig):
         max_z: int = 100,
         embedding_dim: int = 512,
         ffn_embedding_dim: int = 2048,
+        pred_hidden_dim: int = 256,
         num_layers: int = 9,
         num_heads: int = 8,
         cutoff: int = 5.0,
@@ -26,12 +27,12 @@ class GeoformerConfig(PretrainedConfig):
         dataset_root=None,
         mean=None,
         std=None,
-        pad_token_id: int = 0,
         **kwargs
     ):
         self.max_z = max_z
         self.embedding_dim = embedding_dim
         self.ffn_embedding_dim = ffn_embedding_dim
+        self.pred_hidden_dim = pred_hidden_dim
         self.num_layers = num_layers
         self.num_heads = num_heads
         self.cutoff = cutoff
@@ -45,6 +46,4 @@ class GeoformerConfig(PretrainedConfig):
         self.mean = mean
         self.std = std
 
-        super(GeoformerConfig, self).__init__(
-            pad_token_id=pad_token_id, **kwargs
-        )
+        super(GeoformerConfig, self).__init__(**kwargs)

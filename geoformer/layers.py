@@ -13,10 +13,15 @@ class CosineCutoff(nn.Module):
     cutoff : float
         Cutoff distance.
 
+    Inputs
+    ------
+    distances : torch.Tensor
+        Distances to the neighbors. Shape: (N, num_neighbors).
+
     Returns
     -------
-    torch.Tensor
-        Cutoff function values.
+    torch.Tensor    
+        Cutoff function values. Shape: (N, num_neighbors).
     """
     def __init__(self, cutoff):
         super(CosineCutoff, self).__init__()
@@ -43,10 +48,15 @@ class ExpNormalSmearing(nn.Module):
     trainable : bool
         Whether to train the parameters of the smearing function.
 
+    Inputs
+    ------
+    distances : torch.Tensor
+        Distances to the neighbors. Shape: (N, num_neighbors).
+
     Returns
     -------
     torch.Tensor
-        Smearing function values.
+        Smearing function values. Shape: (N, num_neighbors, num_rbf).
     """
     def __init__(self, cutoff=5.0, num_rbf=50, trainable=True):
         super(ExpNormalSmearing, self).__init__()
@@ -132,20 +142,20 @@ class VecLayerNorm(nn.Module):
         return vec
 
     def max_min_norm(self, vec):
-        # vec: (B, N, 3 or 5, hidden_channels)
+        # vec: (N, 3 or 5, hidden_channels)
         dist = torch.norm(vec, dim=-2, keepdim=True)
 
         if (dist == 0).all():
             return torch.zeros_like(vec)
 
         dist = dist.clamp(min=self.eps)
-        direct = vec / dist
+        direct = vec / dist # (N, 3 or 5, hidden_channels)
 
         max_val, _ = torch.max(dist, dim=-1)
         min_val, _ = torch.min(dist, dim=-1)
         
-        # delta: (B, N, 1)
-        delta = max_val - min_val
+        # delta: (N)
+        delta = max_val - min_val 
         delta = torch.where(delta == 0, torch.ones_like(delta), delta)
         dist = (dist - min_val.unsqueeze(-1)) / delta.unsqueeze(-1)
 
@@ -155,12 +165,12 @@ class VecLayerNorm(nn.Module):
         # vec: (num_atoms, 3 or 8, hidden_channels)
         if vec.shape[-2] == 3:
             vec = self.norm(vec)
-            return vec * self.weight.view(1, 1, 1, -1)
+            return vec * self.weight.view(1, 1, -1)
         elif vec.shape[-2] == 8:
             vec1, vec2 = torch.split(vec, [3, 5], dim=-2)
             vec1 = self.norm(vec1)
             vec2 = self.norm(vec2)
             vec = torch.cat([vec1, vec2], dim=-2)
-            return vec * self.weight.view(1, 1, 1, -1)
+            return vec * self.weight.view(1, 1, -1)
         else:
             raise ValueError("VecLayerNorm only support 3 or 8 channels")

@@ -1,14 +1,14 @@
 import os
 import torch
-import numpy as np
 
-from dgllife.utils import RandomSplitter
-from torch.utils.data import DataLoader
+from torch.utils.data import Subset
+from torch_geometric.loader import DataLoader
 from pytorch_lightning.utilities import rank_zero_only
 from pytorch_lightning import LightningDataModule
 from tqdm import tqdm
-from utils.loader import CarbonDatasetBuilder, ChemicalShiftDataset
-from utils.collator import GeoformerDataCollator
+
+from lightning_utils import make_splits
+from data.carbon import CarbonDataset
 
 
 class DataModule(LightningDataModule):
@@ -25,27 +25,37 @@ class DataModule(LightningDataModule):
         dataset_root = os.path.join(self.hparams["dataset_root"], self.hparams["dataset"])
 
         if self.hparams["dataset"] == "carbon":
-            self.dataset = CarbonDatasetBuilder(root=dataset_root).build()  # type: ChemicalShiftDataset
+            self.dataset = CarbonDataset(root=dataset_root) 
         elif self.hparams["dataset"] == "hydrogen":
             raise NotImplementedError("Hydrogen dataset is not implemented yet.")
 
-        self.train_dataset, self.val_dataset, self.test_dataset = RandomSplitter.train_val_test_split(
-            dataset=self.dataset,
-            frac_train=self.hparams["train_size"], 
-            frac_val=self.hparams["val_size"], 
-            frac_test=self.hparams["test_size"], 
-            random_state=self.hparams["seed"]
+        self.idx_train, self.idx_val, self.idx_test = make_splits(
+            dataset_len=len(self.dataset), 
+            train_size=self.hparams["train_size"],
+            val_size=self.hparams["val_size"],
+            test_size=self.hparams["test_size"],
+            seed=self.hparams["seed"],
+            filename=os.path.join(self.hparams["log_dir"], "splits.npz"),
+            splits=self.hparams["splits"],
         )
+
+        print(
+            f"train {len(self.idx_train)}, val {len(self.idx_val)}, test {len(self.idx_test)}"
+        )
+
+        self.train_dataset = Subset(self.dataset, self.idx_train)
+        self.val_dataset = Subset(self.dataset, self.idx_val)
+        self.test_dataset = Subset(self.dataset, self.idx_test)
 
         print(
             f"train {len(self.train_dataset)}, val {len(self.val_dataset)}, test {len(self.test_dataset)}"
         )
     
-        self._standardize()
-
-        print(
-            f"****** Standardized dataset with mean {self._mean:.4f} and std {self._std:.4f} ******"
-        )
+        if self._mean is None or self._std is None:
+            self._standardize()
+            print(
+                f"****** Standardized dataset with mean {self._mean} and std {self._std} ******"
+            )
 
     def train_dataloader(self):
         return self._get_dataloader(self.train_dataset, "train")
@@ -76,8 +86,6 @@ class DataModule(LightningDataModule):
             batch_size = self.hparams["inference_batch_size"]
             shuffle = False
 
-        collator = GeoformerDataCollator(max_nodes=self.hparams["max_nodes"])
-
         dl = DataLoader(
             dataset=dataset,
             batch_size=batch_size,
@@ -85,7 +93,6 @@ class DataModule(LightningDataModule):
             num_workers=self.hparams["num_workers"],
             pin_memory=True,
             drop_last=False,
-            collate_fn=collator,
         )
 
         if store_dataloader:
@@ -95,15 +102,21 @@ class DataModule(LightningDataModule):
 
     @rank_zero_only
     def _standardize(self):
-        train_data = tqdm(
+        data = tqdm(
             self._get_dataloader(
                 self.train_dataset, "val", store_dataloader=False
             ),
             desc="computing mean and std",
         )
 
-        ys = torch.cat([data[-2][data[-1]] for data in train_data])
+        ys = []
+        for batch in data:
+            if not hasattr(batch, 'y') or not hasattr(batch, 'mask'):
+                raise ValueError("Batch must contain y and mask")
+            masked_y = batch.y[batch.mask]
+            ys.append(masked_y)
 
+        ys = torch.cat(ys, dim=0)
         self._mean = ys.mean(dim=0)
         self._std = ys.std(dim=0)
     
