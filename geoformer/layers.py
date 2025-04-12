@@ -15,7 +15,7 @@ class CosineCutoff(nn.Module):
 
     Inputs
     ------
-    distances : torch.Tensor
+    dist : torch.Tensor
         Distances to the neighbors. Shape: (N, num_neighbors).
 
     Returns
@@ -25,13 +25,11 @@ class CosineCutoff(nn.Module):
     """
     def __init__(self, cutoff):
         super(CosineCutoff, self).__init__()
-
         self.cutoff = cutoff
 
     def forward(self, distances):
         cutoffs = 0.5 * (torch.cos(distances * math.pi / self.cutoff) + 1.0)
         cutoffs = cutoffs * (distances < self.cutoff).float()
-
         return cutoffs
 
 
@@ -82,7 +80,6 @@ class ExpNormalSmearing(nn.Module):
         betas = torch.tensor(
             [(2 / self.num_rbf * (1 - start_value)) ** -2] * self.num_rbf
         )
-
         return means, betas
 
     def reset_parameters(self):
@@ -98,23 +95,6 @@ class ExpNormalSmearing(nn.Module):
 
 
 class VecLayerNorm(nn.Module):
-    r"""
-    Vector Layer Normalization.
-
-    Parameters
-    ----------
-    hidden_channels : int
-        Number of hidden channels.
-    trainable : bool
-        Whether to train the parameters of the normalization.
-    norm_type : str
-        Type of normalization.
-
-    Returns
-    -------
-    torch.Tensor
-        Normalized vectors.
-    """
     def __init__(self, hidden_channels, trainable, norm_type="max_min"):
         super(VecLayerNorm, self).__init__()
 
@@ -142,20 +122,19 @@ class VecLayerNorm(nn.Module):
         return vec
 
     def max_min_norm(self, vec):
-        # vec: (N, 3 or 5, hidden_channels)
+        # vec: (B, N, 3 or 5, hidden_channels)
         dist = torch.norm(vec, dim=-2, keepdim=True)
 
         if (dist == 0).all():
             return torch.zeros_like(vec)
 
         dist = dist.clamp(min=self.eps)
-        direct = vec / dist # (N, 3 or 5, hidden_channels)
+        direct = vec / dist
 
         max_val, _ = torch.max(dist, dim=-1)
         min_val, _ = torch.min(dist, dim=-1)
-        
-        # delta: (N)
-        delta = max_val - min_val 
+        # delta: (B, N, 1)
+        delta = max_val - min_val
         delta = torch.where(delta == 0, torch.ones_like(delta), delta)
         dist = (dist - min_val.unsqueeze(-1)) / delta.unsqueeze(-1)
 
@@ -165,12 +144,12 @@ class VecLayerNorm(nn.Module):
         # vec: (num_atoms, 3 or 8, hidden_channels)
         if vec.shape[-2] == 3:
             vec = self.norm(vec)
-            return vec * self.weight.view(1, 1, -1)
+            return vec * self.weight.view(1, 1, 1, -1)
         elif vec.shape[-2] == 8:
             vec1, vec2 = torch.split(vec, [3, 5], dim=-2)
             vec1 = self.norm(vec1)
             vec2 = self.norm(vec2)
             vec = torch.cat([vec1, vec2], dim=-2)
-            return vec * self.weight.view(1, 1, -1)
+            return vec * self.weight.view(1, 1, 1, -1)
         else:
             raise ValueError("VecLayerNorm only support 3 or 8 channels")

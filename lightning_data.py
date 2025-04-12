@@ -1,13 +1,12 @@
 import os
 import torch
 
-from torch.utils.data import Subset
-from torch_geometric.loader import DataLoader
+from torch.utils.data import Subset, DataLoader
 from pytorch_lightning.utilities import rank_zero_only
 from pytorch_lightning import LightningDataModule
 from tqdm import tqdm
 
-from lightning_utils import make_splits
+from lightning_utils import make_splits, GeoformerDataCollator
 from data.carbon import CarbonDataset
 
 
@@ -85,6 +84,8 @@ class DataModule(LightningDataModule):
         elif stage in ["val", "test"]:
             batch_size = self.hparams["inference_batch_size"]
             shuffle = False
+            
+        collator = GeoformerDataCollator(max_nodes=self.hparams["max_nodes"])
 
         dl = DataLoader(
             dataset=dataset,
@@ -93,6 +94,7 @@ class DataModule(LightningDataModule):
             num_workers=self.hparams["num_workers"],
             pin_memory=True,
             drop_last=False,
+            collate_fn=collator,
         )
 
         if store_dataloader:
@@ -111,10 +113,8 @@ class DataModule(LightningDataModule):
 
         ys = []
         for batch in data:
-            if not hasattr(batch, 'y') or not hasattr(batch, 'mask'):
-                raise ValueError("Batch must contain y and mask")
-            masked_y = batch.y[batch.mask]
-            ys.append(masked_y)
+            label, mask = batch["labels"], batch["mask"]
+            ys.append(label[mask])
 
         ys = torch.cat(ys, dim=0)
         self._mean = ys.mean(dim=0)

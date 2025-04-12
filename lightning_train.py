@@ -44,23 +44,23 @@ def get_args():
     parser.add_argument(
         "--lr-patience",
         type=int,
-        default=10,
+        default=25,
         help="Patience for lr-schedule. Patience per eval-interval of validation",
     )
     parser.add_argument(
         "--lr-min",
         type=float,
-        default=1e-07,
+        default=1e-6,
         help="Minimum learning rate before early stop",
     )
     parser.add_argument(
         "--lr-factor",
         type=float,
-        default=0.8,
+        default=0.5,
         help="Minimum learning rate before early stop",
     )
     parser.add_argument(
-        "--weight-decay", type=float, default=1e-8, help="Weight decay strength"
+        "--weight-decay", type=float, default=1e-4, help="Weight decay strength"
     )
     parser.add_argument(
         "--early-stopping-patience",
@@ -78,7 +78,7 @@ def get_args():
         help="Name of the torch_geometric dataset. Default is carbon",
     )
     parser.add_argument(
-        "--dataset-root", default='./data', type=str, help="Data storage directory"
+        "--dataset-root", default='./data/dataset', type=str, help="Data storage directory"
     )
     parser.add_argument(
         "--mean", default=None, type=float, help="Mean of the dataset"
@@ -109,13 +109,13 @@ def get_args():
     parser.add_argument(
         "--train-size",
         type=number,
-        default=0.8,
+        default=0.7,
         help="Percentage/number of samples in training set (None to use all remaining samples)",
     )
     parser.add_argument(
         "--val-size",
         type=number,
-        default=0.1,
+        default=0.2,
         help="Percentage/number of samples in validation set (None to use all remaining samples)",
     )
     parser.add_argument(
@@ -123,6 +123,11 @@ def get_args():
         type=number,
         default=0.1,
         help="Percentage/number of samples in test set (None to use all remaining samples)",
+    )
+    parser.add_argument(
+        "--splits",
+        default=None,
+        help="Npz with splits idx_train, idx_val, idx_test",
     )
     parser.add_argument(
         "--num-workers",
@@ -135,8 +140,14 @@ def get_args():
     parser.add_argument(
         "--max-z",
         type=int,
-        default=53,
+        default=55,
         help="Maximum atomic number that fits in the embedding matrix",
+    )
+    parser.add_argument(
+        "--max-nodes",
+        default=None,
+        type=int,
+        help="Maximum number of nodes for padding in the dataset",
     )
     parser.add_argument(
         "--embedding-dim", type=int, default=256, help="Embedding dimension"
@@ -144,23 +155,23 @@ def get_args():
     parser.add_argument(
         "--ffn-embedding-dim",
         type=int,
-        default=1024,
+        default=256,
         help="Embedding dimension for feedforward network",
     )
     parser.add_argument(
         "--pred-hidden-dim",
         type=int,
-        default=512,
+        default=256,
         help="Hidden dimension for prediction",
     )
     parser.add_argument(
         "--num-layers",
         type=int,
-        default=5,
+        default=6,
         help="Number of interaction layers in the model",
     )
     parser.add_argument(
-        "--num-heads", type=int, default=32, help="Number of attention heads"
+        "--num-heads", type=int, default=8, help="Number of attention heads"
     )
     parser.add_argument(
         "--cutoff", type=float, default=5.0, help="Cutoff in model"
@@ -302,7 +313,7 @@ def main():
     data.prepare_dataset()
     args.mean, args.std = float(data.mean), float(data.std)
 
-    model = LNNP(args)
+    model = LNNP(args).to(device)
 
     csv_logger = CSVLogger(args.log_dir, name="metrics", version="")
 

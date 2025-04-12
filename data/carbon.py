@@ -68,7 +68,6 @@ class CarbonDataset(InMemoryDataset):
             if graph is None:
                 continue
 
-
             data = Data()
             data.smiles = Chem.MolToSmiles(mol, isomericSmiles=True, canonical=True) 
             data.inchi = mol.GetProp('INChI key')

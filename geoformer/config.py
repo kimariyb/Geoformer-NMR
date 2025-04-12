@@ -24,7 +24,6 @@ class GeoformerConfig(PretrainedConfig):
         dropout: float = 0.0,
         attention_dropout: float = 0.0,
         activation_dropout: float = 0.0,
-        dataset_root=None,
         mean=None,
         std=None,
         **kwargs
@@ -42,8 +41,7 @@ class GeoformerConfig(PretrainedConfig):
         self.dropout = dropout
         self.attention_dropout = attention_dropout
         self.activation_dropout = activation_dropout
-        self.dataset_root = dataset_root
         self.mean = mean
         self.std = std
 
-        super(GeoformerConfig, self).__init__(**kwargs)
+        super(GeoformerConfig, self).__init__()

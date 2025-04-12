@@ -41,7 +41,7 @@ class LNNP(LightningModule):
         return [optimizer], [lr_scheduler]
 
     def forward(self, batch):
-        return self.model(batch)
+        return self.model(z=batch["z"], pos=batch["pos"], mask=batch["mask"])
 
     def training_step(self, batch, batch_idx):
         return self.step(batch, l1_loss, "train")
@@ -55,10 +55,15 @@ class LNNP(LightningModule):
     def step(self, batch, loss_fn, stage):
         with torch.set_grad_enabled(stage == "train"):
             pred = self(batch)
-            label = batch.y[batch.mask]
-
+            
+        loss = 0
+        
+        if "labels" in batch:
+            label, mask = batch["labels"], batch["mask"]
+            label = label[mask].reshape(-1) # (N, 1) to (N)
             loss = loss_fn(pred, label)
-            self.losses[stage].append(loss.detach())
+
+        self.losses[stage].append(loss.detach())
 
         return loss
 
